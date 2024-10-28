@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/kardianos/service"
 	// Добавляем этот импорт
+	"github.com/gorilla/websocket"
 )
 
 // Config структура для хранения настроек
@@ -36,6 +38,13 @@ var (
 			"StartTimeout": "120",
 		},
 	}
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+	// канал для логов
+	logChan = make(chan string, 100)
 )
 
 type program struct{}
@@ -170,9 +179,21 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 
+	// Логируем входящий запрос
+	reqBody, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewBuffer(reqBody))
+	logMessage := fmt.Sprintf("Входящий запрос: %s", string(reqBody))
+	logChan <- logMessage
+
 	if _, err := io.Copy(w, resp.Body); err != nil {
 		logger.Error(err)
 	}
+
+	// Логируем ответ
+	respBody, _ := io.ReadAll(resp.Body)
+	resp.Body = io.NopCloser(bytes.NewBuffer(respBody))
+	logMessage = fmt.Sprintf("Ответ: %s", string(respBody))
+	logChan <- logMessage
 }
 
 func handleSettings(w http.ResponseWriter, r *http.Request) {
@@ -215,10 +236,27 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		logger.Error(err)
+		return
+	}
+	defer conn.Close()
+
+	for logMsg := range logChan {
+		err := conn.WriteMessage(websocket.TextMessage, []byte(logMsg))
+		if err != nil {
+			break
+		}
+	}
+}
+
 func setupRoutes() {
 	// Setup API routes
 	http.HandleFunc("/document", handleRequest)
 	http.HandleFunc("/api/settings", handleSettings)
+	http.HandleFunc("/ws", handleWebSocket)
 
 	// Setup static files using regular file server
 	staticDir := "./static"

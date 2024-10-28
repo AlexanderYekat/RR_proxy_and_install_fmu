@@ -81,6 +81,16 @@
         .company-info a:hover {
             text-decoration: underline;
         }
+        #logs {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+        }
+        .request { color: blue; }
+        .response { color: green; }
     </style>
 </head>
 <body>
@@ -111,6 +121,9 @@
         <p>© 2024 ЦТО КСМ - Центр технического обслуживания контрольно-слежящей механики</p>
         <p>Посетите наш сайт: <a href="https://cto-ksm.ru" target="_blank">cto-ksm.ru</a></p>
     </div>
+
+    <h2>Логи запросов</h2>
+    <div id="logs"></div>
 
     <script>
         function showStatus(message, isError = false) {
@@ -173,6 +186,22 @@
 
         // Load settings when page loads
         loadSettings();
+
+        // WebSocket для логов
+        const logs = document.getElementById('logs');
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+        
+        ws.onmessage = function(event) {
+            const log = document.createElement('div');
+            log.textContent = event.data;
+            if (event.data.includes('Входящий запрос')) {
+                log.className = 'request';
+            } else if (event.data.includes('Ответ')) {
+                log.className = 'response';
+            }
+            logs.appendChild(log);
+            logs.scrollTop = logs.scrollHeight;
+        };
     </script>
 </body>
 </html>
